@@ -1646,3 +1646,7 @@ toolbar[inactive="true"] .urlbar,
     }
   }
 }
+
+#copy-page-url-button {
+  list-style-image: url("chrome://browser/skin/copylink.svg");
+}
