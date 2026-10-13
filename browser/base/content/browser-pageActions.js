@@ -60,6 +60,31 @@ var BrowserPageActions = {
   init() {
     this.placeAllActionsInUrlbar();
     this._onPanelShowing = this._onPanelShowing.bind(this);
+
+    let copyButton = document.getElementById("copy-page-url-button");
+    copyButton.addEventListener("click", event => {
+      if (event.button === 0) {
+        this.copyPageURL();
+      }
+    });
+    copyButton.addEventListener("keypress", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.copyPageURL();
+      }
+    });
+  },
+
+  copyPageURL() {
+    let url = gBrowser.selectedBrowser.currentURI.spec;
+    Cc["@mozilla.org/widget/clipboardhelper;1"]
+      .getService(Ci.nsIClipboardHelper)
+      .copyString(url);
+
+    ConfirmationHint.show(
+      document.getElementById("copy-page-url-button"),
+      "confirmation-hint-page-url-copied"
+    );
   },
 
   _onPanelShowing() {
