@@ -150,6 +150,7 @@
                                                    bookmarks.                  \
                                                 */                             \
       ", syncChangeCounter INTEGER NOT NULL DEFAULT 1"                         \
+      ", expireAt INTEGER" /* PRTime expiration time, NULL = none. */          \
       ")")
 
 // This table stores tombstones for bookmarks with SYNC_STATUS_NORMAL. We

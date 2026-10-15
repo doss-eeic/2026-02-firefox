@@ -1426,6 +1426,13 @@ nsresult Database::InitSchema(bool* aDatabaseMigrated) {
 
       // Firefox 155 uses schema version 87
 
+      if (currentSchemaVersion < 88) {
+        rv = MigrateV88Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      // Firefox 159 uses schema version 88
+
       // Schema Upgrades must add migration code here.
       // >>> IMPORTANT! <<<
       // NEVER MIX UP SYNC AND ASYNC EXECUTION IN MIGRATORS, YOU MAY LOCK THE
@@ -2454,6 +2461,18 @@ nsresult Database::MigrateV87Up() {
   NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
+}
+
+nsresult Database::MigrateV88Up() {
+  nsCOMPtr<mozIStorageStatement> stmt;
+  nsresult rv = mMainConn->CreateStatement(
+      "SELECT expireAt FROM moz_bookmarks"_ns, getter_AddRefs(stmt));
+  if (NS_SUCCEEDED(rv)) {
+    return NS_OK;
+  }
+
+  return mMainConn->ExecuteSimpleSQL(
+      "ALTER TABLE moz_bookmarks ADD COLUMN expireAt INTEGER"_ns);
 }
 
 int64_t Database::CreateMobileRoot() {
