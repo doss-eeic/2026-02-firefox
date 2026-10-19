@@ -193,6 +193,9 @@ const BOOKMARK_VALIDATORS = Object.freeze({
     v => Number.isInteger(v) && v >= PlacesUtils.bookmarks.DEFAULT_INDEX
   ),
   dateAdded: simpleValidateFunc(v => v.constructor.name == "Date" && !isNaN(v)),
+  expireAt: simpleValidateFunc(
+    v => v === null || Number.isFinite(Date.prototype.getTime.call(v))
+  ),
   lastModified: simpleValidateFunc(
     v => v.constructor.name == "Date" && !isNaN(v)
   ),
