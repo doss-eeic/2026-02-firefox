@@ -32,7 +32,8 @@
  *   The time at which the item was last modified.
  * - expireAt (Date or null)
  *   The expiration time, or null for no expiration. Only bookmarks may have
- *   a non-null expiration. Supported on insert; defaults to null.
+ *   a non-null expiration. Defaults to null on insert; on update, null clears
+ *   the expiration and omitting the property preserves it.
  * - type (number)
  *   The item's type, either TYPE_BOOKMARK, TYPE_FOLDER or TYPE_SEPARATOR.
  *
@@ -770,9 +771,6 @@ export var Bookmarks = Object.freeze({
 
       // Remove any property that will stay the same.
       removeSameValueProperties(updateInfo, item);
-      if (updateInfo.hasOwnProperty("expireAt")) {
-        throw new Error("Updating expireAt is not supported yet");
-      }
       // Check if anything should still be updated.
       if (Object.keys(updateInfo).length < 3) {
         // Remove non-enumerable properties.
@@ -792,6 +790,10 @@ export var Bookmarks = Object.freeze({
         updateInfo,
         {
           url: { validIf: () => item.type == this.TYPE_BOOKMARK },
+          expireAt: {
+            validIf: b =>
+              b.expireAt === null || item.type == this.TYPE_BOOKMARK,
+          },
           title: {
             validIf: () =>
               [this.TYPE_BOOKMARK, this.TYPE_FOLDER].includes(item.type),
@@ -1987,6 +1989,14 @@ async function updateBookmark(
   if (info.hasOwnProperty("dateAdded")) {
     tuples.set("dateAdded", {
       value: lazy.PlacesUtils.toPRTime(info.dateAdded),
+    });
+  }
+  if (info.hasOwnProperty("expireAt")) {
+    tuples.set("expireAt", {
+      value:
+        info.expireAt === null
+          ? null
+          : lazy.PlacesUtils.toPRTime(info.expireAt),
     });
   }
 
