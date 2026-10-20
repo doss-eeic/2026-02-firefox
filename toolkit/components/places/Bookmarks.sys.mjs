@@ -30,6 +30,9 @@
  *   The time at which the item was added.
  * - lastModified (Date)
  *   The time at which the item was last modified.
+ * - expireAt (Date or null)
+ *   The expiration time, or null for no expiration. Only bookmarks may have
+ *   a non-null expiration. Supported on insert; defaults to null.
  * - type (number)
  *   The item's type, either TYPE_BOOKMARK, TYPE_FOLDER or TYPE_SEPARATOR.
  *
@@ -299,6 +302,10 @@ export var Bookmarks = Object.freeze({
           b.title === "",
       },
       dateAdded: { defaultValue: addedTime },
+      expireAt: {
+        defaultValue: null,
+        validIf: b => b.expireAt === null || b.type == this.TYPE_BOOKMARK,
+      },
       lastModified: {
         defaultValue: modTime,
         validIf: b =>
@@ -520,6 +527,10 @@ export var Bookmarks = Object.freeze({
               (b.dateAdded && b.lastModified >= b.dateAdded),
           },
           index: { replaceWith: indexToUse++ },
+          expireAt: {
+            defaultValue: null,
+            validIf: b => b.expireAt === null,
+          },
           source: { replaceWith: source },
           keyword: { validIf: b => b.type == TYPE_BOOKMARK },
           charset: { validIf: b => b.type == TYPE_BOOKMARK },
@@ -759,6 +770,9 @@ export var Bookmarks = Object.freeze({
 
       // Remove any property that will stay the same.
       removeSameValueProperties(updateInfo, item);
+      if (updateInfo.hasOwnProperty("expireAt")) {
+        throw new Error("Updating expireAt is not supported yet");
+      }
       // Check if anything should still be updated.
       if (Object.keys(updateInfo).length < 3) {
         // Remove non-enumerable properties.
@@ -2204,11 +2218,11 @@ function insertBookmark(item, parent) {
         // Insert the bookmark into the database.
         await db.executeCached(
           `INSERT INTO moz_bookmarks (fk, type, parent, position, title,
-                                    dateAdded, lastModified, guid,
+                                    dateAdded, lastModified, guid, expireAt,
                                     syncChangeCounter, syncStatus)
          VALUES (CASE WHEN :url ISNULL THEN NULL ELSE (SELECT id FROM moz_places WHERE url_hash = hash(:url) AND url = :url) END,
                  :type, :parent, :index, NULLIF(:title, ''), :date_added,
-                 :last_modified, :guid, :syncChangeCounter, :syncStatus)
+                 :last_modified, :guid, :expireAt, :syncChangeCounter, :syncStatus)
         `,
           {
             url: item.hasOwnProperty("url") ? item.url.href : null,
@@ -2218,6 +2232,10 @@ function insertBookmark(item, parent) {
             title: item.title,
             date_added: lazy.PlacesUtils.toPRTime(item.dateAdded),
             last_modified: lazy.PlacesUtils.toPRTime(item.lastModified),
+            expireAt:
+              item.expireAt === null
+                ? null
+                : lazy.PlacesUtils.toPRTime(item.expireAt),
             guid: item.guid,
             syncChangeCounter: syncChangeDelta,
             syncStatus,
@@ -2418,7 +2436,7 @@ async function queryBookmarks(info) {
       // hence setting them to NULL
       let rows = await db.executeCached(
         `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-                b.dateAdded, b.lastModified, b.type,
+                b.dateAdded, b.lastModified, b.expireAt, b.type,
                 IFNULL(b.title, '') AS title, h.url AS url, b.parent, p.parent,
                 NULL AS _id,
                 NULL AS _childCount,
@@ -2456,7 +2474,7 @@ async function fetchBookmark(info, options = {}) {
   let query = async function (db) {
     let rows = await db.executeCached(
       `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               (SELECT count(*) FROM moz_bookmarks WHERE parent = b.id) AS _childCount,
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus
@@ -2490,7 +2508,7 @@ async function fetchBookmarkByPosition(info, options = {}) {
     let index = info.index == Bookmarks.DEFAULT_INDEX ? null : info.index;
     let rows = await db.executeCached(
       `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               (SELECT count(*) FROM moz_bookmarks WHERE parent = b.id) AS _childCount,
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus
@@ -2521,7 +2539,7 @@ async function fetchBookmarksByTags(info, options = {}) {
   let query = async function (db) {
     let rows = await db.executeCached(
       `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               NULL AS _childCount,
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus,
@@ -2569,7 +2587,7 @@ async function fetchBookmarksByGUIDPrefix(info, options = {}) {
   let query = async function (db) {
     let rows = await db.executeCached(
       `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               (SELECT count(*) FROM moz_bookmarks WHERE parent = b.id) AS _childCount,
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus
@@ -2610,7 +2628,7 @@ async function fetchBookmarksByURLs(urls, options = {}) {
         SELECT value, hash(value) FROM carray(:urls)
       )
       SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               NULL AS _childCount,
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus,
@@ -2657,7 +2675,7 @@ async function fetchBookmarksByURL(info, options = {}) {
     let rows = await db.executeCached(
       `/* do not warn (bug no): not worth to add an index */
       SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url, b.id AS _id, b.parent AS _parentId,
               NULL AS _childCount, /* Unused for now */
               p.parent AS _grandParentId, b.syncStatus AS _syncStatus,
@@ -2698,7 +2716,7 @@ async function fetchBookmarksByParentGUID(info, options = {}) {
   let query = async function (db) {
     let rows = await db.executeCached(
       `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-              b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+              b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
               h.url AS url,
               b.id AS _id,
               b.parent AS _parentId,
@@ -2733,7 +2751,7 @@ function fetchRecentBookmarks(numberOfItems) {
     async function (db) {
       let rows = await db.executeCached(
         `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-                b.dateAdded, b.lastModified, b.type,
+                b.dateAdded, b.lastModified, b.expireAt, b.type,
                 IFNULL(b.title, '') AS title, h.url AS url, b.id AS _id,
                 b.parent AS _parentId, NULL AS _childCount,
                 NULL AS _grandParentId, NULL AS _syncStatus
@@ -2762,7 +2780,7 @@ function fetchRecentBookmarks(numberOfItems) {
 async function fetchBookmarksByParent(db, info) {
   let rows = await db.executeCached(
     `SELECT b.guid, IFNULL(p.guid, '') AS parentGuid, b.position AS 'index',
-            b.dateAdded, b.lastModified, b.type, IFNULL(b.title, '') AS title,
+            b.dateAdded, b.lastModified, b.expireAt, b.type, IFNULL(b.title, '') AS title,
             h.url AS url, b.id AS _id, b.parent AS _parentId,
             (SELECT count(*) FROM moz_bookmarks WHERE parent = b.id) AS _childCount,
             p.parent AS _grandParentId, b.syncStatus AS _syncStatus
@@ -3017,6 +3035,11 @@ function removeSameValueProperties(dest, src) {
   for (let prop in dest) {
     let remove = false;
     switch (prop) {
+      case "expireAt":
+        remove =
+          src.hasOwnProperty(prop) &&
+          dest[prop]?.getTime() === src[prop]?.getTime();
+        break;
       case "lastModified":
       case "dateAdded":
         remove =
@@ -3048,6 +3071,9 @@ function removeSameValueProperties(dest, src) {
 function rowsToItemsArray(rows, ignoreInvalidURLs = false) {
   return rows.map(row => {
     let item = {};
+    let expireAt = row.getResultByName("expireAt");
+    item.expireAt =
+      expireAt === null ? null : lazy.PlacesUtils.toDate(expireAt);
     for (let prop of ["guid", "index", "type", "title"]) {
       item[prop] = row.getResultByName(prop);
     }
@@ -3207,7 +3233,7 @@ var removeFoldersContents = async function (db, folderGuids, options) {
        )
        SELECT b.id AS _id, b.parent AS _parentId, b.position AS 'index',
               b.type, url, b.guid, p.guid AS parentGuid, b.dateAdded,
-              b.lastModified, IFNULL(b.title, '') AS title,
+              b.lastModified, b.expireAt, IFNULL(b.title, '') AS title,
               p.parent AS _grandParentId, NULL AS _childCount,
               b.syncStatus AS _syncStatus
        FROM descendants
