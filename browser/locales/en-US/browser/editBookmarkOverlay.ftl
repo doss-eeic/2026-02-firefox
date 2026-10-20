@@ -53,3 +53,20 @@ bookmark-overlay-keyword-2 =
 bookmark-overlay-tags-caption-label = Use tags to organize and search for bookmarks from the address bar
 
 bookmark-overlay-keyword-caption-label-2 = Use a single keyword to open bookmarks directly from the address bar
+
+
+# bookmarkExpiration
+bookmark-overlay-expiry =
+  .value = Expires
+  .accesskey = E
+
+bookmark-overlay-expiry-clear-button =
+  .label = Remove Expiration
+  .accesskey = R
+
+bookmark-overlay-expiry-input =
+  .aria-label = Expiration data and time
+
+bookmark-overlay-expiry-caption-label = Expired bookmarks are moved to a separate folder
+bookmark-overlay-expiry-invalid = Enter a valid date and time
+bookmark-overlay-expiry-past = {DATETIME($date, dateStyle: "medium", timeStyle: "short")} is in the past
