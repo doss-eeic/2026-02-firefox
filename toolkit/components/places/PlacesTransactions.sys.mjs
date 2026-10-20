@@ -59,6 +59,7 @@
  *  - guid, parentGuid, newParentGuid: a valid Places GUID string.
  *  - guids: an array of valid Places GUID strings.
  *  - title: a string
+ *  - expireAt: a valid Date, or null to remove the expiration.
  *  - index, newIndex: the position of an item in its containing folder,
  *    starting from 0.
  *    integer and PlacesUtils.bookmarks.DEFAULT_INDEX
@@ -947,6 +948,16 @@ DefineTransaction.defineInputProps(
   DefineTransaction.strOrNullValidate,
   null
 );
+DefineTransaction.defineInputProps(["expireAt"], value => {
+  if (value === null) {
+    return null;
+  }
+  let time = Date.prototype.getTime.call(value);
+  if (!Number.isFinite(time)) {
+    throw new Error("Invalid expiration date");
+  }
+  return new Date(time);
+});
 DefineTransaction.defineInputProps(
   ["keyword", "oldKeyword", "oldTag", "tag"],
   DefineTransaction.strValidate,
@@ -1270,6 +1281,38 @@ PT.EditTitle.prototype = {
   },
   toString() {
     return "EditTitle";
+  },
+};
+
+/**
+ * Transaction for changing or clearing a bookmark's expiration.
+ *
+ * Required Input Properties: guid, expireAt.
+ */
+PT.EditExpireAt = DefineTransaction(["guid", "expireAt"]);
+PT.EditExpireAt.prototype = {
+  async execute({ guid, expireAt }) {
+    let originalInfo = await PlacesUtils.bookmarks.fetch(guid);
+    if (!originalInfo) {
+      throw new Error("cannot update a non-existent item");
+    }
+    if (originalInfo.type != PlacesUtils.bookmarks.TYPE_BOOKMARK) {
+      throw new Error("Cannot edit expiration for non-bookmark items");
+    }
+
+    await PlacesUtils.bookmarks.update({ guid, expireAt });
+
+    this.undo = PlacesUtils.bookmarks.update.bind(PlacesUtils.bookmarks, {
+      guid,
+      expireAt: originalInfo.expireAt,
+    });
+    this.redo = PlacesUtils.bookmarks.update.bind(PlacesUtils.bookmarks, {
+      guid,
+      expireAt,
+    });
+  },
+  toString() {
+    return "EditExpireAt";
   },
 };
 
