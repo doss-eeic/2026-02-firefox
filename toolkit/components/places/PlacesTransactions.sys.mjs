@@ -1074,17 +1074,17 @@ var PT = PlacesTransactions;
  * Transaction for creating a bookmark.
  *
  * Required Input Properties: url, parentGuid.
- * Optional Input Properties: index, title, keyword, tags.
+ * Optional Input Properties: index, title, keyword, tags, expireAt.
  *
  * When this transaction is executed, it's resolved to the new bookmark's GUID.
  */
 PT.NewBookmark = DefineTransaction(
   ["parentGuid", "url"],
-  ["index", "title", "tags"]
+  ["index", "title", "tags", "expireAt"]
 );
 PT.NewBookmark.prototype = {
-  async execute({ parentGuid, url, index, title, tags }) {
-    let info = { parentGuid, index, url, title };
+  async execute({ parentGuid, url, index, title, tags, expireAt = null }) {
+    let info = { parentGuid, index, url, title, expireAt };
     // Filter tags to exclude already existing ones.
     if (tags.length) {
       let currentTags = PlacesUtils.tagging.getTagsForURI(url.URI);
