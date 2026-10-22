@@ -927,12 +927,18 @@ nsPlacesExpiration.prototype = {
             }
           }
           let rows = await db.executeCached(
-            `SELECT b.guid
+            `WITH RECURSIVE descendants(id) AS (
+               SELECT id FROM moz_bookmarks WHERE guid = :folderGuid
+               UNION ALL
+               SELECT c.id FROM moz_bookmarks c
+               JOIN descendants d ON c.parent = d.id
+             )
+             SELECT b.guid
              FROM moz_bookmarks b
              WHERE b.type = :bookmarkType
                AND b.expireAt IS NOT NULL
                AND b.expireAt <= :now
-               AND b.parent != :excludedParentId
+               AND b.parent NOT IN (SELECT id FROM descendants)
                AND b.parent NOT IN (
                  SELECT c.id
                  FROM moz_bookmarks c
@@ -944,7 +950,7 @@ nsPlacesExpiration.prototype = {
             {
               bookmarkType: bookmarks.TYPE_BOOKMARK,
               now: lazy.PlacesUtils.toPRTime(new Date()),
-              excludedParentId: id ?? -1,
+              folderGuid: storedGuid ?? "",
               tagsGuid: bookmarks.tagsGuid,
               limit: BOOKMARK_EXPIRATION_LIMIT_PER_STEP,
             }
@@ -975,6 +981,10 @@ nsPlacesExpiration.prototype = {
       }
 
       for (let guid of guids) {
+        let item = await bookmarks.fetch(guid);
+        if (!item?.expireAt || item.expireAt.getTime() > Date.now()) {
+          continue;
+        }
         await bookmarks.update({
           guid,
           parentGuid: folderGuid,
