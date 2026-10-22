@@ -36,6 +36,7 @@ var gEditItemOverlay = {
   _initPanelDeferred: null,
   _updateTagsDeferred: null,
   _paneInfo: null,
+  _expireAt: null,
   _setPaneInfo(aInitInfo) {
     if (!aInitInfo) {
       return (this._paneInfo = null);
@@ -243,6 +244,52 @@ var gEditItemOverlay = {
       }
     }
   },
+  //3,4
+  _dateToExpireAtInputValue(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+      return "";
+    }
+    const pad = n => String(n).padStart(2, "0");
+    return (
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+      `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+    );
+  },
+
+  _expireAtInputValueToDate(value) {
+    if (!value) {
+      return null;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  },
+
+  async _fetchExpireAt(isNewBookmark) {
+    if (!this._paneInfo.isBookmark) {
+      throw new Error("_fetchExpireAt called unexpectedly");
+    }
+    if (isNewBookmark) {
+      return null;
+    }
+    const bookmark = await PlacesUtils.bookmarks.fetch(this._paneInfo.itemGuid);
+    return bookmark?.expireAt ?? null;
+  },
+
+  _initExpireAtField(expireAt) {
+    this._expireAt = expireAt;
+    this._initTextField(
+      this._expireAtField,
+      this._dateToExpireAtInputValue(expireAt)
+    );
+    this._updateExpireAtClearButton();
+  },
+
+  _updateExpireAtClearButton() {
+    this._element("expireAtClearButton").disabled =
+      this.readOnly || !this._expireAtField.value;
+  },
+
+  //3,4ここまで
 
   async _initAllTags() {
     this._allTags = new Map();
@@ -268,7 +315,7 @@ var gEditItemOverlay = {
    *   An array of uris for bulk tagging.
    * @param {string[]} [aInfo.hiddenRows]
    *   List of rows to be hidden regardless of the item edited. Possible values:
-   *   "title", "location", "keyword", "folderPicker".
+   *   "title", "location", "keyword", "folderPicker", "expireAt".
    */
   async initPanel(aInfo) {
     const deferred = (this._initPanelDeferred = Promise.withResolvers());
@@ -388,6 +435,22 @@ var gEditItemOverlay = {
         }
         this._keywordField.readOnly = this.readOnly;
       }
+      //5
+      if (showOrCollapse("expireAtRow", isBookmark, "expireAt")) {
+        this._initExpireAtField(null);
+        const expireAt = await this._fetchExpireAt(aInfo.isNewBookmark).catch(
+          e => {
+            console.error(e);
+            return null;
+          }
+        );
+        if (instance != this._instance || this._paneInfo == null) {
+          return;
+        }
+        this._initExpireAtField(expireAt);
+        this._expireAtField.readOnly = this.readOnly;
+      }
+      //5
 
       // Collapse the tag selector if the item does not accept tags.
       if (showOrCollapse("tagsRow", isBookmark || bulkTagging, "tags")) {
@@ -675,6 +738,7 @@ var gEditItemOverlay = {
     this.transactionPromises = [];
     this._bookmarkState = null;
     this._allTags = null;
+    this._expireAt = null;
   },
 
   get selectedFolderGuid() {
@@ -698,12 +762,13 @@ var gEditItemOverlay = {
         info: this._paneInfo,
         ...extraOptions,
       };
-
+      //6
       if (this._paneInfo.isBookmark) {
         options.tags = this._element("tagsField").value;
         options.keyword = this._keyword;
+        options.expireAt = this._expireAt;
       }
-
+      //6
       if (this._paneInfo.bulkTagging) {
         options.tags = this._element("tagsField").value;
       }
@@ -849,6 +914,64 @@ var gEditItemOverlay = {
     }
     this._bookmarkState._keywordChanged(this._keywordField.value);
   },
+  //789
+  _applyExpireAt(newExpireAt) {
+    const oldTime = this._expireAt?.getTime() ?? null;
+    const newTime = newExpireAt?.getTime() ?? null;
+    if (oldTime === newTime) {
+      return;
+    }
+    this._expireAt = newExpireAt;
+    this._updateExpireAtClearButton();
+    //this._bookmarkState._expireAtChanged(newExpireAt);
+  },
+
+  async onExpireAtFieldChange() {
+    if (this.readOnly || !this._paneInfo.isBookmark) {
+      return;
+    }
+    if (this._initPanelDeferred) {
+      await this._initPanelDeferred.promise;
+    }
+    if (!this._paneInfo) {
+      return;
+    }
+
+    const field = this._expireAtField;
+    if (field.validity.badInput) {
+      return;
+    }
+
+    const newExpireAt = this._expireAtInputValueToDate(field.value);
+    const isInvalid =
+      newExpireAt === undefined ||
+      (newExpireAt !== null && newExpireAt.getTime() <= Date.now());
+    if (isInvalid) {
+      this._initTextField(
+        field,
+        this._dateToExpireAtInputValue(this._expireAt)
+      );
+      return;
+    }
+
+    this._applyExpireAt(newExpireAt);
+  },
+
+  async onExpireAtClear() {
+    if (this.readOnly || !this._paneInfo.isBookmark) {
+      return;
+    }
+    if (this._initPanelDeferred) {
+      await this._initPanelDeferred.promise;
+    }
+    if (!this._paneInfo) {
+      return;
+    }
+    this._initTextField(this._expireAtField, "");
+    this._applyExpireAt(null);
+  },
+
+  //789
 
   toggleFolderTreeVisibility() {
     let expander = this._element("foldersExpander");
@@ -1182,6 +1305,9 @@ var gEditItemOverlay = {
           case "editBMPanel_keywordField":
             this.onKeywordFieldChange();
             break;
+          case "editBMPanel_expireAtField":
+            this.onExpireAtFieldChange().catch(console.error);
+            break;
         }
         break;
       case "command":
@@ -1202,6 +1328,9 @@ var gEditItemOverlay = {
             break;
           case "editBMPanel_tagsSelectorExpander":
             this.toggleTagsSelector().catch(console.error);
+            break;
+          case "editBMPanel_expireAtClearButton":
+            this.onExpireAtClear().catch(console.error);
             break;
         }
         break;
@@ -1319,6 +1448,7 @@ for (let elt of [
   "locationField",
   "keywordField",
   "tagsField",
+  "expireAtField",
 ]) {
   let eltScoped = elt;
   ChromeUtils.defineLazyGetter(gEditItemOverlay, `_${eltScoped}`, () =>
