@@ -138,6 +138,71 @@ add_task(async function test_folder_recreated_after_removal() {
   );
 });
 
+add_task(async function test_expired_descendant_not_reselected() {
+  let folderGuid = await PlacesUtils.metadata.get(FOLDER_KEY);
+  let subfolder = await PlacesUtils.bookmarks.insert({
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
+    parentGuid: folderGuid,
+    title: "organized",
+  });
+  let nestedExpired = await PlacesUtils.bookmarks.insert({
+    url: "https://nested-in-trash.mozilla.org/",
+    parentGuid: subfolder.guid,
+    expireAt: new Date(Date.now() - 86400000),
+  });
+  let folderBefore = await PlacesUtils.bookmarks.fetch(folderGuid);
+  let childCountBefore = folderBefore.childCount;
+
+  await promiseForceExpirationStep(-1);
+
+  let item = await PlacesUtils.bookmarks.fetch(nestedExpired.guid);
+  Assert.equal(
+    item.parentGuid,
+    subfolder.guid,
+    "An expired bookmark inside a subfolder of the expiration folder was not moved"
+  );
+  let folderAfter = await PlacesUtils.bookmarks.fetch(folderGuid);
+  Assert.equal(
+    folderAfter.childCount,
+    childCountBefore,
+    "The expiration folder direct children did not change"
+  );
+});
+
+add_task(async function test_extended_expiry_not_moved_during_processing() {
+  await PlacesUtils.bookmarks.eraseEverything();
+
+  let expired = await PlacesUtils.bookmarks.insert({
+    url: "https://extended.mozilla.org/",
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    expireAt: new Date(Date.now() - 86400000),
+  });
+
+  let originalSet = PlacesUtils.metadata.set;
+  PlacesUtils.metadata.set = async (key, value) => {
+    let result = await originalSet.call(PlacesUtils.metadata, key, value);
+    if (key == FOLDER_KEY) {
+      await PlacesUtils.bookmarks.update({
+        guid: expired.guid,
+        expireAt: new Date(Date.now() + 86400000),
+      });
+    }
+    return result;
+  };
+  try {
+    await promiseForceExpirationStep(-1);
+  } finally {
+    PlacesUtils.metadata.set = originalSet;
+  }
+
+  let item = await PlacesUtils.bookmarks.fetch(expired.guid);
+  Assert.equal(
+    item.parentGuid,
+    PlacesUtils.bookmarks.unfiledGuid,
+    "The bookmark was not moved after its expiry was extended mid-flight"
+  );
+});
+
 add_task(async function cleanup() {
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
