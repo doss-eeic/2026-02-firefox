@@ -72,6 +72,13 @@ const OVERLIMIT_PAGES_THRESHOLD = 1000;
 // Milliseconds in a day.
 const MSECS_PER_DAY = 86400000;
 
+// Folder under the unfiled root that holds bookmarks past their expireAt.
+const BOOKMARK_EXPIRATION_FOLDER_TITLE = "期限切れブックマーク";
+// Metadata key used to persist the expiration folder GUID.
+const BOOKMARK_EXPIRATION_FOLDER_KEY = "bookmark_expiration_folder";
+// Max number of expired bookmarks moved per expiration step.
+const BOOKMARK_EXPIRATION_LIMIT_PER_STEP = 100;
+
 /**
  * Represents the expiration limits.
  *
@@ -794,6 +801,9 @@ nsPlacesExpiration.prototype = {
   // Number of expiration steps needed to reach a CLEAN status.
   _telemetrySteps: 1,
 
+  // Whether a bookmark expiration step is currently in flight.
+  _bookmarkExpirationRunning: false,
+
   /**
    * Expires visits and orphans.
    *
@@ -840,6 +850,14 @@ nsPlacesExpiration.prototype = {
       return;
     }
 
+    if (aAction != ACTION.SHUTDOWN_DIRTY) {
+      try {
+        await this._expireBookmarks();
+      } catch (ex) {
+        console.error(ex);
+      }
+    }
+
     if (this._mostRecentExpiredVisitDays) {
       Glean.places.mostRecentExpiredVisit.accumulateSingleSample(
         this._mostRecentExpiredVisitDays
@@ -877,6 +895,95 @@ nsPlacesExpiration.prototype = {
       null,
       lazy.PlacesUtils.TOPIC_EXPIRATION_FINISHED
     );
+  },
+
+  /**
+   * Moves bookmarks whose expireAt timestamp has passed into a dedicated
+   * folder under the unfiled root.
+   */
+  async _expireBookmarks() {
+    if (this._bookmarkExpirationRunning) {
+      return;
+    }
+    this._bookmarkExpirationRunning = true;
+    try {
+      let bookmarks = lazy.PlacesUtils.bookmarks;
+      let storedGuid = await lazy.PlacesUtils.metadata.get(
+        BOOKMARK_EXPIRATION_FOLDER_KEY,
+        null
+      );
+
+      let { folderId, guids } = await lazy.PlacesUtils.withConnectionWrapper(
+        "PlacesExpiration.sys.mjs: expire bookmarks",
+        async db => {
+          let id = null;
+          if (storedGuid) {
+            let folderRows = await db.executeCached(
+              `SELECT id FROM moz_bookmarks WHERE guid = :guid`,
+              { guid: storedGuid }
+            );
+            if (folderRows.length) {
+              id = folderRows[0].getResultByIndex(0);
+            }
+          }
+          let rows = await db.executeCached(
+            `SELECT b.guid
+             FROM moz_bookmarks b
+             WHERE b.type = :bookmarkType
+               AND b.expireAt IS NOT NULL
+               AND b.expireAt <= :now
+               AND b.parent != :excludedParentId
+               AND b.parent NOT IN (
+                 SELECT c.id
+                 FROM moz_bookmarks c
+                 JOIN moz_bookmarks t ON c.parent = t.id
+                 WHERE t.guid = :tagsGuid
+               )
+             ORDER BY b.expireAt ASC
+             LIMIT :limit`,
+            {
+              bookmarkType: bookmarks.TYPE_BOOKMARK,
+              now: lazy.PlacesUtils.toPRTime(new Date()),
+              excludedParentId: id ?? -1,
+              tagsGuid: bookmarks.tagsGuid,
+              limit: BOOKMARK_EXPIRATION_LIMIT_PER_STEP,
+            }
+          );
+          return {
+            folderId: id,
+            guids: rows.map(row => row.getResultByName("guid")),
+          };
+        }
+      );
+
+      if (!guids.length) {
+        return;
+      }
+
+      let folderGuid = storedGuid;
+      if (!folderId) {
+        let folder = await bookmarks.insert({
+          type: bookmarks.TYPE_FOLDER,
+          parentGuid: bookmarks.unfiledGuid,
+          title: BOOKMARK_EXPIRATION_FOLDER_TITLE,
+        });
+        folderGuid = folder.guid;
+        await lazy.PlacesUtils.metadata.set(
+          BOOKMARK_EXPIRATION_FOLDER_KEY,
+          folderGuid
+        );
+      }
+
+      for (let guid of guids) {
+        await bookmarks.update({
+          guid,
+          parentGuid: folderGuid,
+          index: bookmarks.DEFAULT_INDEX,
+        });
+      }
+    } finally {
+      this._bookmarkExpirationRunning = false;
+    }
   },
 
   /**

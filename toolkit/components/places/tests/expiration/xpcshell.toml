@@ -6,6 +6,8 @@ head = "head_expiration.js"
 
 ["test_annos_expire_never.js"]
 
+["test_bookmarks_expiration.js"]
+
 ["test_clearHistory.js"]
 
 ["test_debug_expiration.js"]
