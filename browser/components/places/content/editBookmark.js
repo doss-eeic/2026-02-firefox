@@ -962,7 +962,7 @@ var gEditItemOverlay = {
     if (oldTime === newTime) {
       return;
     }
-    const instance = this;
+    const instance = this._instance;
     const state = this._bookmarkState;
 
     this._expireAt = newExpireAt;
@@ -974,6 +974,7 @@ var gEditItemOverlay = {
         this._expireAt = oldExpireAt;
         this._expireAtField.value = this._dateToExpireAtInputValue(oldExpireAt);
         this._updateExpireAtClearButton();
+        this._setExpireAtError("bookmark-overlay-expiry-save-error");
         await state._expireAtChanged(oldExpireAt).catch(console.error);
       }
       throw e;
@@ -1016,7 +1017,7 @@ var gEditItemOverlay = {
     }
 
     this._setExpireAtError(null);
-    this._applyExpireAt(newExpireAt);
+    await this._applyExpireAt(newExpireAt);
   },
 
   async onExpireAtClear() {

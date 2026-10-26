@@ -72,3 +72,4 @@ bookmark-overlay-expiry-caption-label = Expired bookmarks are moved to a separat
 bookmark-overlay-expiry-invalid = Enter a valid date and time
 bookmark-overlay-expiry-past = {DATETIME($date, dateStyle: "medium", timeStyle: "short")} is in the past
 bookmark-overlay-expiry-load-error = The expiration date could not be loaded.
+bookmark-overlay-expiry-save-error = The expiry date could not be saved.
