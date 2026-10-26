@@ -401,6 +401,7 @@ var gEditItemOverlay = {
           ["bookmark-title-changed"],
           this.handlePlacesEvents
         );
+        Services.obs.addObserver(this, "places-bookmark-expiration-changed");
         window.addEventListener("unload", this);
 
         let panel = document.getElementById("editBookmarkPanelContent");
@@ -758,6 +759,7 @@ var gEditItemOverlay = {
         ["bookmark-title-changed"],
         this.handlePlacesEvents
       );
+      Services.obs.removeObserver(this, "places-bookmark-expiration-changed");
       window.removeEventListener("unload", this);
       let panel = document.getElementById("editBookmarkPanelContent");
       panel.removeEventListener("change", this);
@@ -1405,6 +1407,21 @@ var gEditItemOverlay = {
         }
         break;
     }
+  },
+
+  observe(subject, topic, data) {
+    if (topic != "places-bookmark-expiration-changed") {
+      return;
+    }
+    const { guid, expireAt } = JSON.parse(data);
+    if (!this._bookmarkState || guid != this._paneInfo?.itemGuid) {
+      return;
+    }
+    const date = expireAt === null ? null : new Date(expireAt);
+    this._bookmarkState._originalState.expireAt = date;
+    delete this._bookmarkState._newState.expireAt;
+    this._initExpireAtField(date);
+    this._setExpireAtError(null);
   },
 
   async handlePlacesEvents(events) {
