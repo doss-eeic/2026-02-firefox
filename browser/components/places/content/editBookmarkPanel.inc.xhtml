@@ -102,6 +102,8 @@
     <richlistbox id="editBMPanel_tagsSelector" styled="true"/>
   </div>
 
+
+  <!-- 期限の設定部分 -->
   <label data-l10n-id="bookmark-overlay-keyword-2"
          class="editBMPanel_keywordRow hideable"
          control="editBMPanel_keywordField"/>
@@ -113,4 +115,23 @@
   <div id="keyword-field-info"
        class="editBMPanel_keywordRow caption-label hideable"
        data-l10n-id="bookmark-overlay-keyword-caption-label-2"/>
+    <label data-l10n-id="bookmark-overlay-expiry"
+         class="editBMPanel_expireAtRow hideable"
+         control="editBMPanel_expireAtField"/>
+  <hbox class="editBMPanel_expireAtRow hideable">
+    <html:input id="editBMPanel_expireAtField"
+                type="datetime-local"
+                style="flex: 1;"
+                aria-describedby="expireAt-field-info editBMPanel_expireAtError"/>
+    <button id="editBMPanel_expireAtClearButton"
+            data-l10n-id="bookmark-overlay-expiry-clear-button"/>
+  </hbox>
+
+  <div id="expireAt-field-info"
+       class="editBMPanel_expireAtRow caption-label hideable"
+       data-l10n-id="bookmark-overlay-expiry-caption-label"/>
+  <div id="editBMPanel_expireAtError"
+       class="caption-label"
+       role="alert"
+       hidden="true"/>
 </div>

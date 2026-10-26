@@ -30,7 +30,9 @@ const ITEM_CHANGED_BATCH_NOTIFICATION_THRESHOLD = 10;
 
 // copied from utilityOverlay.js
 const TAB_DROP_TYPE = "application/x-moz-tabbrowser-tab";
-
+function isSameExpireAt(a, b) {
+  return (a?.getTime() ?? null) === (b?.getTime() ?? null);
+}
 /**
  * Collects all information for a bookmark and performs editmethods
  */
@@ -47,6 +49,8 @@ class BookmarkState {
    *   skipped
    * @param {string} [options.keyword]
    *   Existing (if there are any) keyword for bookmark
+   * @param {Date|null} [options.expireAt]
+   *   Existing expiration date for the bookmark, or null if it never expires.
    * @param {boolean} [options.isFolder]
    *   If the item is a folder.
    * @param {Array<{ title: string; url: nsIURI; }>} [options.children]
@@ -62,6 +66,7 @@ class BookmarkState {
     info,
     tags = "",
     keyword = "",
+    expireAt = null,
     isFolder = false,
     children = [],
     autosave = false,
@@ -84,6 +89,7 @@ class BookmarkState {
         .split(/\s*,\s*/)
         .filter(tag => !!tag.length),
       keyword,
+      expireAt,
       parentGuid: info.parentGuid,
       index,
     };
@@ -135,7 +141,16 @@ class BookmarkState {
     this._newState.keyword = keyword;
     await this._maybeSave();
   }
-
+  //SAVE EDITED EXPIRE DATE
+  async _expireAtChanged(expireAt) {
+    if (isSameExpireAt(expireAt, this._originalState.expireAt)) {
+      delete this._newState.expireAt;
+    } else {
+      this._newState.expireAt = expireAt;
+    }
+    //console.log("expireAt _newState:", this._newState);
+    await this._maybeSave();
+  }
   /**
    * Save edited parentGuid for the bookmark
    *
@@ -177,6 +192,14 @@ class BookmarkState {
           guid: previousResults[0],
           keyword: this._newState.keyword,
           postData: this._postData,
+        })
+      );
+    }
+    if (this._newState.expireAt) {
+      transactions.push(previousResults =>
+        lazy.PlacesTransactions.EditExpireAt({
+          guid: previousResults[0],
+          expireAt: this._newState.expireAt,
         })
       );
     }
@@ -287,6 +310,14 @@ class BookmarkState {
               keyword: value,
               postData: this._postData,
               oldKeyword: this._originalState.keyword,
+            })
+          );
+          break;
+        case "expireAt":
+          transactions.push(
+            lazy.PlacesTransactions.EditExpireAt({
+              guid: this._guid,
+              expireAt: value,
             })
           );
           break;
