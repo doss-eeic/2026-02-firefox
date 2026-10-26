@@ -64,6 +64,10 @@
   display: none;
 }
 
+#editBookmarkPanel #editBMPanel_expireAtError:not([hidden]) {
+  display: block;
+}
+
 #editBookmarkPanelContent {
   padding: 0.8em var(--panel-padding) var(--panel-padding);
 }

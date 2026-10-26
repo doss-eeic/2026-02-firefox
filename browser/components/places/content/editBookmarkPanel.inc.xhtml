@@ -122,7 +122,7 @@
     <html:input id="editBMPanel_expireAtField"
                 type="datetime-local"
                 style="flex: 1;"
-                aria-describedby="expireAt-field-info"/>
+                aria-describedby="expireAt-field-info editBMPanel_expireAtError"/>
     <button id="editBMPanel_expireAtClearButton"
             data-l10n-id="bookmark-overlay-expiry-clear-button"/>
   </hbox>
@@ -130,4 +130,8 @@
   <div id="expireAt-field-info"
        class="editBMPanel_expireAtRow caption-label hideable"
        data-l10n-id="bookmark-overlay-expiry-caption-label"/>
+  <div id="editBMPanel_expireAtError"
+       class="caption-label"
+       role="alert"
+       hidden="true"/>
 </div>
