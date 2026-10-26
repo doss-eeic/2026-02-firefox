@@ -1302,14 +1302,16 @@ PT.EditExpireAt.prototype = {
 
     await PlacesUtils.bookmarks.update({ guid, expireAt });
 
-    this.undo = PlacesUtils.bookmarks.update.bind(PlacesUtils.bookmarks, {
-      guid,
-      expireAt: originalInfo.expireAt,
-    });
-    this.redo = PlacesUtils.bookmarks.update.bind(PlacesUtils.bookmarks, {
-      guid,
-      expireAt,
-    });
+    const updateExpireAt = async value => {
+      await PlacesUtils.bookmarks.update({ guid, expireAt: value });
+      Services.obs.notifyObservers(
+        null,
+        "places-bookmark-expiration-changed",
+        JSON.stringify({ guid, expireAt: value?.getTime() ?? null })
+      );
+    };
+    this.undo = () => updateExpireAt(originalInfo.expireAt);
+    this.redo = () => updateExpireAt(expireAt);
   },
   toString() {
     return "EditExpireAt";
