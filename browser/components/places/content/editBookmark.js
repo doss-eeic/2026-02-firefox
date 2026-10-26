@@ -257,7 +257,9 @@ var gEditItemOverlay = {
   },
   //3,4
   _dateToExpireAtInputValue(date) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    if (Object.prototype.toString.call(date) != "[object Date]" ||
+      Number.isNaN(date.getTime())
+    ) {
       return "";
     }
     const pad = n => String(n).padStart(2, "0");
