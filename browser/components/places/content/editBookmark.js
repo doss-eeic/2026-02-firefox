@@ -366,6 +366,8 @@ var gEditItemOverlay = {
 
       this._didChangeFolder = false;
       this.transactionPromises = [];
+      this._expireAtUndo = [];
+      this._expireAtRedo = [];
 
       let {
         parentGuid,
@@ -408,6 +410,7 @@ var gEditItemOverlay = {
         panel.addEventListener("change", this);
         panel.addEventListener("command", this);
         panel.addEventListener("input", this);
+        panel.addEventListener("keydown", this, true);
 
         this._observersAdded = true;
       }
@@ -765,6 +768,7 @@ var gEditItemOverlay = {
       panel.removeEventListener("change", this);
       panel.removeEventListener("command", this);
       panel.removeEventListener("input", this);
+      panel.removeEventListener("keydown", this, true);
       this._observersAdded = false;
     }
 
@@ -781,6 +785,8 @@ var gEditItemOverlay = {
     this._bookmarkState = null;
     this._allTags = null;
     this._expireAt = null;
+    this._expireAtUndo = [];
+    this._expireAtRedo = [];
   },
 
   get selectedFolderGuid() {
@@ -957,7 +963,7 @@ var gEditItemOverlay = {
     this._bookmarkState._keywordChanged(this._keywordField.value);
   },
   //789
-  async _applyExpireAt(newExpireAt) {
+  async _applyExpireAt(newExpireAt, recordHistory = true) {
     const oldExpireAt = this._expireAt;
     const oldTime = this._expireAt?.getTime() ?? null;
     const newTime = newExpireAt?.getTime() ?? null;
@@ -971,6 +977,10 @@ var gEditItemOverlay = {
     this._updateExpireAtClearButton();
     try {
       await state._expireAtChanged(newExpireAt);
+      if (recordHistory && !state._autosave && instance == this._instance) {
+        this._expireAtUndo.push(oldExpireAt);
+        this._expireAtRedo = [];
+      }
     } catch (e) {
       if (instance == this._instance && this._paneInfo) {
         this._expireAt = oldExpireAt;
@@ -980,6 +990,41 @@ var gEditItemOverlay = {
         await state._expireAtChanged(oldExpireAt).catch(console.error);
       }
       throw e;
+    }
+  },
+
+  async _onExpireAtKeyDown(event) {
+    if (
+      this.readOnly ||
+      !this._bookmarkState ||
+      this._bookmarkState._autosave ||
+      this._expireAtField.disabled ||
+      !["editBMPanel_expireAtField", "editBMPanel_expireAtClearButton"].includes(
+        event.target.id
+      ) ||
+      !(event.ctrlKey || event.metaKey) ||
+      event.altKey
+    ) {
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key != "z" && key != "y") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const redo = key == "y" || event.shiftKey;
+    const from = redo ? this._expireAtRedo : this._expireAtUndo;
+    const to = redo ? this._expireAtUndo : this._expireAtRedo;
+    if (!from.length) {
+      return;
+    }
+    const instance = this._instance;
+    to.push(this._expireAt);
+    await this._applyExpireAt(from.pop(), false);
+    if (instance == this._instance && this._paneInfo) {
+      this._initExpireAtField(this._expireAt);
+      this._setExpireAtError(null);
     }
   },
 
@@ -1349,6 +1394,9 @@ var gEditItemOverlay = {
   // EventListener
   handleEvent(event) {
     switch (event.type) {
+      case "keydown":
+        this._onExpireAtKeyDown(event).catch(console.error);
+        break;
       case "unload":
         this.uninitPanel(false);
         break;
