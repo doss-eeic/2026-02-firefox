@@ -919,11 +919,31 @@ nsPlacesExpiration.prototype = {
           let id = null;
           if (storedGuid) {
             let folderRows = await db.executeCached(
-              `SELECT id FROM moz_bookmarks WHERE guid = :guid`,
+              `SELECT b.id, b.type, p.guid AS parentGuid
+               FROM moz_bookmarks b
+               LEFT JOIN moz_bookmarks p ON p.id = b.parent
+               WHERE b.guid = :guid`,
               { guid: storedGuid }
             );
             if (folderRows.length) {
-              id = folderRows[0].getResultByIndex(0);
+              let row = folderRows[0];
+              let type = row.getResultByName("type");
+              let parentGuid = row.getResultByName("parentGuid");
+              if (
+                type == bookmarks.TYPE_FOLDER &&
+                parentGuid == bookmarks.unfiledGuid
+              ) {
+                id = row.getResultByName("id");
+              } else {
+                storedGuid = null;
+                try {
+                  await lazy.PlacesUtils.metadata.delete(
+                    BOOKMARK_EXPIRATION_FOLDER_KEY
+                  );
+                } catch (ex) {}
+              }
+            } else {
+              storedGuid = null;
             }
           }
           let rows = await db.executeCached(
